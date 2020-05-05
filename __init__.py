@@ -1,13 +1,19 @@
 from PySide2.QtWidgets import *
+from PySide2.QtGui import *
+from PySide2.QtCore import *
 from shiboken2 import wrapInstance
 import maya.OpenMayaUI as omui
-import pymel.core as pm
 from maya import cmds
+from functools import partial
 
 
-class Attribute(object):
-
-    def __init__(self, name):
+# Filter for nodes, attrs
+# Select by type
+# Force selection in nodes tree when reloading
+# Recently selected
+# Save selection
+# default value
+# Order attrs as given by maya
 
 def f_attr(node, attr):
     return '{0}.{1}'.format(node, attr)
@@ -34,7 +40,7 @@ def get_widget(object_name, type_):
 
 def get_user_attrs(node):
     attributes = list()
-    for item in cmds.listAttr(node.name(), userDefined=True):
+    for item in cmds.listAttr(node.name(), userDefined=True) or list():
         attributes.append(item)
     return attributes
 
@@ -50,28 +56,37 @@ def get_intersection(ls):
 
 
 class AttributeEditorPlus(QDialog):
-    transform_attrs = ['translate', 'rotate', 'scale', 'shear',
-                       'rotateOrder', 'rotateAxis',
-                       'inheritsTransform']
-
-    visibility_attrs = ['visibility']
-
-    groups = {
-        'transform': transform_attrs,
-        'visibility': visibility_attrs
-    }
+    script_job_number = -1
 
     def __init__(self, parent):
         super(AttributeEditorPlus, self).__init__(parent)
+        parent.setAttribute(Qt.WA_AlwaysShowToolTips)
 
-        self.node_name = QLineEdit()
-        self.node_type = QLineEdit()
+        self.setWindowTitle(self.__class__.__name__)
+        self.setAttribute(Qt.WA_AlwaysShowToolTips)
+
+        if cmds.about(ntOS=True):
+            self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
+        elif cmds.about(macOS=True):
+            self.setWindowFlags(Qt.Tool)
+
+        self.nodes_tree = QTreeWidget()
+        self.nodes_tree.setColumnCount(2)
+        self.nodes_tree.setHeaderLabels(('name', 'type'))
+        self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
+        self.nodes_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        self.attrs_tree = QTreeWidget()
+        self.attrs_tree.setColumnCount(3)
+        self.attrs_tree.setHeaderLabels(('name', 'locked', 'connected', 'value'))
+        self.attrs_tree.setAttribute(Qt.WA_AlwaysShowToolTips)
+        self.attrs_tree.setMouseTracking(True)
 
         self.node_info_lay = QHBoxLayout()
-        self.node_info_lay.addWidget(self.node_name)
-        self.node_info_lay.addWidget(self.node_type)
+        self.node_info_lay.addWidget(self.nodes_tree)
 
         self.attrs_lay = QVBoxLayout()
+        self.attrs_lay.addWidget(self.attrs_tree)
 
         main_lay = QVBoxLayout(self)
         main_lay.addLayout(self.node_info_lay)
@@ -91,107 +106,116 @@ class AttributeEditorPlus(QDialog):
         return dialog
 
     def refresh(self):
-        selection = pm.selected()
-        common_attributes = get_intersection([get_user_attrs(node) for node in selection])
+        selected_nodes = self.get_selected_nodes()
+        self.nodes_tree.clear()
+        selection = cmds.ls(sl=True, objectsOnly=True) or list()
 
-        for attr in common_attributes:
-            print attr
+        for index, node in enumerate(selection):
+            type_ = cmds.objectType(node)
+            widget = QTreeWidgetItem((node, type_))
+            icon = QIcon(':/{0}.svg'.format(type_))
+            widget.setIcon(1, icon)
+            self.nodes_tree.addTopLevelItem(widget)
 
-        # for node in selection:
-        #     self.node_name.setText(node.name())
-        #     self.node_type.setText(node.type())
-        #
-        #     user_defined_attrs = list()
-        #
-        #     for item in pm.listAttr(node, userDefined=True):
-        #         if isinstance(item, pm.Attribute):
-        #             attr = item
-        #         else:
-        #             try:
-        #                 attr = pm.Attribute(f_attr(node, item))
-        #             except:
-        #                 continue
-        #
-        #         user_defined_attrs.append(attr)
-        #
-        #     attributes = dict()
-        #     # for group, attrs in self.groups.items():
-        #     #     attributes[group] = list()
-        #     #     for attr in attrs:
-        #     #         attributes[group].append(pm.PyNode(f_attr(node, attr)))
-        #
-        #     attributes['userDefined'] = user_defined_attrs
-        #
-        # for title, attrs in commun_attributes.items():
-        #     widget = self.create_group_widget(title, attrs)
-        #     self.attrs_lay.addWidget(widget)
+        iterator = QTreeWidgetItemIterator(self.nodes_tree)
+        while iterator.value():
+            widget = iterator.value()
+            text = widget.text(0)
+            if text in selected_nodes:
+                widget.setSelected(True)
 
-    def create_group_widget(self, title, attrs):
-        group_box_lay = QVBoxLayout()
+            iterator += 1
 
-        group_box = QGroupBox()
-        group_box.setTitle(title)
-        group_box.setLayout(group_box_lay)
+        self.refresh_attr_tree()
 
-        for attr in attrs:
-            attr_lay = self.create_attr_lay(attr)
-            if attr_lay is None:
-                continue
-            group_box_lay.addLayout(attr_lay)
+    def set_script_job_enabled(self, enabled):
+        if enabled and self.script_job_number < 0:
+            self.script_job_number = cmds.scriptJob(event=["SelectionChanged", partial(self.refresh)], protected=True)
+        elif not enabled and self.script_job_number >= 0:
+            cmds.scriptJob(kill=self.script_job_number, force=True)
+            self.script_job_number = -1
 
-        return group_box
+    def deleteLater(self, *args, **kwargs):
+        self.set_script_job_enabled(False)
+        super(self.__class__, self).deleteLater(*args, **kwargs)
 
-    def create_attr_lay(self, attr):
-        children = list()
+    def show(self, *args, **kwargs):
+        self.set_script_job_enabled(True)
+        super(self.__class__, self).show()
 
-        try:
-            children = attr.children()
-        except:
-            pass
+    def get_selected_nodes(self):
+        selected_nodes = list()
+        for widget in self.nodes_tree.selectedItems():
+            selected_nodes.append(widget.text(0))
+        return selected_nodes
 
-        name = attr.name(includeNode=False)
-        locked = attr.isLocked()
+    def refresh_attr_tree(self):
+        self.attrs_tree.clear()
 
-        name_line = QLineEdit()
-        name_line.setText(name)
+        attrs_dict = dict()
+        nodes = self.get_selected_nodes()
+        for node in nodes:
+            attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
+            for attr in attrs:
+                full = f_attr(node, attr)
+                if not cmds.objExists(full):
+                    continue
+                value = cmds.getAttr(full)
+                type_ = cmds.getAttr(full, type=True)
+                locked = cmds.getAttr(full, lock=True)
+                connected = bool(cmds.listConnections(full, source=True, destination=False))
+                if attr not in attrs_dict:
+                    attrs_dict[attr] = {'values': list(),
+                                        'types': list(),
+                                        'locked': list(),
+                                        'keyable': list(),
+                                        'connected': list()}
+                attrs_dict[attr]['values'].append(value)
+                attrs_dict[attr]['types'].append(type_)
+                attrs_dict[attr]['locked'].append(locked)
+                attrs_dict[attr]['connected'].append(connected)
 
-        type_line = QLineEdit()
-        type_line.setText(attr.type())
+        for attr, info in attrs_dict.items():
+            values = info['values']
+            types = info['types']
+            unique_values = self.unique(values)
+            unique_types = self.unique(types)
+            value = str(unique_values[0]) if len(unique_values) == 1 else '...'
+            type_ = str(unique_types[0]) if len(unique_types) == 1 else '...'
+            locked = self.are_they(info['locked'])
+            connected = self.are_they(info['connected'])
 
-        value_lay = self.create_value_layout(attr, lock=locked)
+            if len(values) == len(nodes):
+                widget = QTreeWidgetItem((attr, '', '', value))
+                msg = '{0} - type: {1}, value: {2}'.format(attr, type_, value)
+                widget.setToolTip(0, msg)
+                widget.setStatusTip(0, msg)
+                if locked == 1:
+                    widget.setText(1, '...')
+                if locked > 0:
+                    widget.setIcon(1, QIcon(':/lock.png'))
 
-        attr_info_lay = QHBoxLayout()
-        attr_info_lay.addWidget(name_line)
-        # attr_info_lay.addWidget(type_line)
-        attr_info_lay.addLayout(value_lay)
+                if connected == 1:
+                    widget.setText(2, '...')
+                if connected > 0:
+                    widget.setIcon(2, QIcon(':/lock.png'))
 
-        attr_children_lay = QVBoxLayout()
+                self.attrs_tree.addTopLevelItem(widget)
 
-        if children:
-            widget = self.create_group_widget('children of {0}'.format(name), children)
-            attr_children_lay.addWidget(widget)
+    def are_they(self, ls):
+        true_count = ls.count(True)
 
-        attr_lay = QVBoxLayout()
-        attr_lay.addLayout(attr_info_lay)
-        attr_lay.addLayout(attr_children_lay)
+        if true_count == len(ls):
+            return 2
+        elif true_count > 0:
+            return 1
 
-        return attr_lay
+        return 0
 
-    def create_value_layout(self, attr, lock=False):
+    def unique(self, ls):
+        new_ls = list()
 
-        lay = QHBoxLayout()
-        raw_value = attr.get()
-
-        if attr.type() == 'double3':
-            for value in raw_value:
-                line = QLineEdit()
-                line.setDisabled(lock)
-                line.setText(str(value))
-                lay.addWidget(line)
-        else:
-            line = QLineEdit()
-            line.setDisabled(lock)
-            line.setText(str(raw_value))
-            lay.addWidget(line)
-
-        return lay
+        for i in ls:
+            if i not in new_ls:
+                new_ls.append(i)
+        return new_ls
