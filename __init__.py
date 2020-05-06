@@ -5,7 +5,8 @@ from shiboken2 import wrapInstance
 import maya.OpenMayaUI as omui
 from maya import cmds
 from functools import partial
-
+import json
+import os
 
 # Filter for nodes, attrs
 # Select by type
@@ -54,6 +55,46 @@ def get_intersection(ls):
         test.intersection_update(i)
     return list(test)
 
+class SavedSelectionFile(object):
+
+    def __init__(self, path):
+        if not self.is_one(path):
+            cmds.error('\'{0}\' is not a valid {1}.'.format(path, self.__class__.__name__))
+        self.__path = path
+
+    @classmethod
+    def from_maya_folder(cls):
+        maya_folder = cmds.internalVar(userAppDir=True)[:-1]
+        path = '{0}/{1}'.format(maya_folder, '{0}.json'.format(cls.__name__))
+        return cls(path)
+
+    @classmethod
+    def is_one(cls, path):
+        location = path.split('/')
+        location.pop()
+        return os.path.isdir(location)
+
+    def get_path(self):
+        return self.__path
+
+    def exists(self):
+        return os.path.exists(self.get_path())
+
+    def read(self):
+        if not self.exists():
+            self.write(dict())
+
+        with open(self.get_path(), 'r') as f:
+            return json.load(f)
+
+    def write(self, item):
+        with open(self.get_path(), 'w') as f:
+            return json.dump(item, f)
+
+    def add(self, label, items):
+        content = self.read()
+        content[label] = items
+        self.write(content)
 
 class AttributeEditorPlus(QDialog):
     script_job_number = -1
