@@ -21,7 +21,6 @@ def create_action(name, func, parent):
 
 
 def list_to_label(ls, limit=0, separator=', '):
-
     result = list()
 
     for index, item in enumerate(ls):
@@ -43,10 +42,11 @@ class AttributeEditorPlus(QDialog):
 
     def __init__(self, parent):
         super(AttributeEditorPlus, self).__init__(parent)
-        parent.setAttribute(Qt.WA_AlwaysShowToolTips)
 
         self.setWindowTitle(self.__class__.__name__)
-        self.setAttribute(Qt.WA_AlwaysShowToolTips)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+        self.setMinimumWidth(500)
 
         if cmds.about(ntOS=True):
             self.setWindowFlags(self.windowFlags() ^ Qt.WindowContextHelpButtonHint)
@@ -91,13 +91,38 @@ class AttributeEditorPlus(QDialog):
         dialog.refresh()
         return dialog
 
+    def set_value(self):
+        print 'Set'
+        grp_attrs = self.get_selected_attrs()
+        common_value = grp_attrs.get_value()
+        raw_value = QInputDialog.getText(self, "Set value", "Value:", text=str(common_value if common_value is not None else ''))[0]
+        if raw_value != '':
+            for attr in grp_attrs:
+                if not attr.is_locked() and not attr.is_source_connected():
+                    current = attr.get_value()
+                    value = eval(raw_value)
+                    attr.set_value(value)
+                else:
+                    cmds.warning('{0}: \'{1}\' cannot be set (locked or source connected).'.format(self.__class__.__name__, attr.get_name()))
+
+            self.refresh_attr_tree()
+
+    def show_context_menu(self, point):
+        context_menu = QMenu(self)
+        context_menu.addAction(create_action('Set Value', self.set_value, self))
+        context_menu.exec_(self.mapToGlobal(point))
+
+    def get_selected_attrs(self):
+        for widget in self.attrs_tree.selectedItems():
+            return widget.data(0, Qt.UserRole)
+
     def refresh_menu_bar(self):
         self.menu_bar.clear()
 
-        file_menu = self.menu_bar.addMenu('File')
-        recently_selected_menu = file_menu.addMenu('Recently Selected')
-        saved_selections = file_menu.addMenu('Saved Selections')
-        file_menu.addAction(create_action('Save Selection', self.save_selection, self))
+        selection_menu = self.menu_bar.addMenu('Selection')
+        recently_selected_menu = selection_menu.addMenu('Recently Selected')
+        saved_selections = selection_menu.addMenu('Saved Selections')
+        selection_menu.addAction(create_action('Save Selection', self.save_selection, self))
 
         for selection in self.selection_file.get_recent():
             action = create_action(list_to_label(selection, limit=50), lambda x=selection: self.select(x), self)
@@ -178,46 +203,30 @@ class AttributeEditorPlus(QDialog):
             attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
             for attr in attrs:
                 full = core.f_attr(node, attr)
-                if not cmds.objExists(full):
-                    continue
-                value = cmds.getAttr(full)
-                type_ = cmds.getAttr(full, type=True)
-                locked = cmds.getAttr(full, lock=True)
-                connected = bool(cmds.listConnections(full, source=True, destination=False))
-                if attr not in attrs_dict:
-                    attrs_dict[attr] = {'values': list(),
-                                        'types': list(),
-                                        'locked': list(),
-                                        'keyable': list(),
-                                        'connected': list()}
-                attrs_dict[attr]['values'].append(value)
-                attrs_dict[attr]['types'].append(type_)
-                attrs_dict[attr]['locked'].append(locked)
-                attrs_dict[attr]['connected'].append(connected)
+                if core.Attribute.is_one(full):
+                    if attr not in attrs_dict:
+                        attrs_dict[attr] = core.GroupOfAttributes()
+                    attrs_dict[attr].append(core.Attribute(full))
 
-        for attr, info in attrs_dict.items():
-            values = info['values']
-            types = info['types']
-            unique_values = core.remove_duplicates(values)
-            unique_types = core.remove_duplicates(types)
-            value = str(unique_values[0]) if len(unique_values) == 1 else '...'
-            type_ = str(unique_types[0]) if len(unique_types) == 1 else '...'
-            locked = core.search_in(True, info['locked'])
-            connected = core.search_in(True, info['connected'])
+        for attr, attr_grp in attrs_dict.items():
+            locked = attr_grp.are_locked()
+            source_connected = attr_grp.are_source_connected()
+            value = attr_grp.get_value()
+            type_ = attr_grp.get_type()
 
-            if len(values) == len(nodes):
-                widget = QTreeWidgetItem((attr, '', '', value))
-                msg = '{0} - type: {1}, value: {2}'.format(attr, type_, value)
-                widget.setToolTip(0, msg)
-                widget.setStatusTip(0, msg)
-                if locked == 1:
-                    widget.setText(1, '...')
-                if locked > 0:
-                    widget.setIcon(1, QIcon(':/lock.png'))
+            widget = QTreeWidgetItem((attr, '', '', str(value) if value is not None else '...'))
+            msg = '{0} - type: {1}, value: {2}'.format(attr, str(type_) if type_ is not None else '...', value)
+            widget.setToolTip(0, msg)
+            widget.setStatusTip(0, msg)
+            widget.setData(0, Qt.UserRole, attr_grp)
+            if locked == 1:
+                widget.setText(1, '...')
+            if locked > 0:
+                widget.setIcon(1, QIcon(':/lock.png'))
 
-                if connected == 1:
-                    widget.setText(2, '...')
-                if connected > 0:
-                    widget.setIcon(2, QIcon(':/lock.png'))
+            if source_connected == 1:
+                widget.setText(2, '...')
+            if source_connected > 0:
+                widget.setIcon(2, QIcon(':/lock.png'))
 
-                self.attrs_tree.addTopLevelItem(widget)
+            self.attrs_tree.addTopLevelItem(widget)

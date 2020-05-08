@@ -1,5 +1,5 @@
 import ui
 
 
-def open_attribute_editor_plus():
+def display():
     ui.AttributeEditorPlus.display()

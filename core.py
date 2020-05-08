@@ -52,6 +52,35 @@ def select(items):
     cmds.select(result, ne=True)
 
 
+def maya_type_to_python_type(type_):
+    float_attributes = ('double', 'doubleLinear', 'doubleAngle')
+    bool_attributes = ('bool',)
+    int_attributes = ('long', 'enum')
+    if type_ in float_attributes:
+        return float
+    if type_ in bool_attributes:
+        return bool
+    if type_ in int_attributes:
+        return int
+
+    return None
+
+
+def maya_types_to_python_types(types):
+    p_types = list()
+    for type_ in types:
+        p_type = maya_type_to_python_type(type_)
+        p_types.append(p_type)
+    return p_types
+
+
+def is_list_full_of_same(ls):
+    unique_values = remove_duplicates(ls)
+    if len(unique_values) == 1:
+        return True
+    return False
+
+
 class SelectionFile(object):
     saved = 'saved'
     recent = 'recent'
@@ -115,3 +144,102 @@ class SelectionFile(object):
                 content[cat].pop()
         content[cat].insert(0, obj)
         self.write(content)
+
+
+class GroupOfAttributes(object):
+
+    def __init__(self):
+        self.__attrs = list()
+
+    def __iter__(self):
+        return iter(self.get_attributes())
+
+    def append(self, attr):
+        if isinstance(attr, Attribute):
+            self.__attrs.append(attr)
+
+    def get_attributes(self):
+        return self.__attrs
+
+    def are_locked(self):
+        return search_in(True, [item.is_locked() for item in self.get_attributes()])
+
+    def are_source_connected(self):
+        return search_in(True, [item.is_source_connected() for item in self.get_attributes()])
+
+    def get_type(self):
+        types = [item.get_type() for item in self.get_attributes()]
+        if is_list_full_of_same(types):
+            return types[0]
+        return None
+
+    def get_python_type(self):
+        types = [item.get_type() for item in self.get_attributes()]
+        types = maya_types_to_python_types(types)
+        if is_list_full_of_same(types):
+            return types[0]
+        return None
+
+    def get_value(self):
+        values = [item.get_value() for item in self.get_attributes()]
+        if is_list_full_of_same(values):
+            return values[0]
+        return None
+
+
+# values = [item.get_value() for item in full_attrs]
+#             unique_values = core.remove_duplicates(values)
+#             value = str(unique_values[0]) if len(unique_values) == 1 else '...'
+#
+#             types = [item.get_type() for item in full_attrs]
+#             unique_types = core.remove_duplicates(types)
+#             type_ = str(unique_types[0]) if len(unique_types) == 1 else '...'
+#
+#             locked = core.search_in(True, [item.is_locked() for item in full_attrs])
+#
+#             connected = core.search_in(True, [item.is_source_connected() for item in full_attrs])
+
+
+class Attribute(object):
+
+    def __init__(self, attr):
+        if not self.is_one(attr):
+            cmds.error('\'{0}\' is not a valid {1}.'.format(attr, self.__class__.__name__))
+        self.__attr = attr
+
+    @classmethod
+    def is_one(cls, attr):
+        if attr.count('.') > 0:
+            if cmds.objExists(attr):
+                return True
+
+    def get_name(self):
+        return self.__attr
+
+    def get_type(self):
+        return cmds.getAttr(self.get_name(), type=True)
+
+    def get_value(self):
+        return cmds.getAttr(self.get_name())
+
+    def is_locked(self):
+        return cmds.getAttr(self.get_name(), lock=True)
+
+    def is_source_connected(self):
+        if cmds.listConnections(self.get_name(), source=True, destination=False):
+            return True
+        return False
+
+    def is_destination_connected(self):
+        if cmds.listConnections(self.get_name(), source=False, destination=True):
+            return True
+        return False
+
+    def set_value(self, value):
+        cmds.setAttr(self.get_name(), value, clamp=True)
+
+    def get_node(self):
+        return self.get_name().split('.')[0]
+
+    def get_attr(self):
+        return '.'.join(self.get_name().split('.')[1:])
