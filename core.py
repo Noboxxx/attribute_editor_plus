@@ -29,7 +29,6 @@ def remove_duplicates(ls):
 
 
 def subtract_list(a, b):
-    print a, b
     result = list()
     for item in a:
         if item not in b:
@@ -220,7 +219,10 @@ class Attribute(object):
         return cmds.getAttr(self.get_name(), type=True)
 
     def get_value(self):
-        return cmds.getAttr(self.get_name())
+        value = cmds.getAttr(self.get_name())
+        if value is not None:
+            return value
+        return ''
 
     def is_locked(self):
         return cmds.getAttr(self.get_name(), lock=True)
@@ -236,10 +238,22 @@ class Attribute(object):
         return False
 
     def set_value(self, value):
-        cmds.setAttr(self.get_name(), value, clamp=True)
+        if self.get_type() == 'string':
+            cmds.setAttr(self.get_name(), value, clamp=True, type='string')
+        else:
+            cmds.setAttr(self.get_name(), value, clamp=True)
 
     def get_node(self):
         return self.get_name().split('.')[0]
 
     def get_attr(self):
         return '.'.join(self.get_name().split('.')[1:])
+
+
+class Chunk(object):
+
+    def __enter__(self):
+        cmds.undoInfo(openChunk=True)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        cmds.undoInfo(closeChunk=True)

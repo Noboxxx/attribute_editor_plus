@@ -34,6 +34,12 @@ def list_to_label(ls, limit=0, separator=', '):
     return s
 
 
+def format_value(value):
+    if isinstance(value, str) or isinstance(value, unicode):
+        return '\'{0}\''.format(value)
+    return '{0}'.format(value)
+
+
 class AttributeEditorPlus(QDialog):
     script_job_number = -1
     selection_file = core.SelectionFile.from_maya_folder()
@@ -91,21 +97,29 @@ class AttributeEditorPlus(QDialog):
         dialog.refresh()
         return dialog
 
-    def set_value(self):
-        print 'Set'
-        grp_attrs = self.get_selected_attrs()
-        common_value = grp_attrs.get_value()
-        raw_value = QInputDialog.getText(self, "Set value", "Value:", text=str(common_value if common_value is not None else ''))[0]
-        if raw_value != '':
-            for attr in grp_attrs:
-                if not attr.is_locked() and not attr.is_source_connected():
-                    current = attr.get_value()
-                    value = eval(raw_value)
-                    attr.set_value(value)
-                else:
-                    cmds.warning('{0}: \'{1}\' cannot be set (locked or source connected).'.format(self.__class__.__name__, attr.get_name()))
+    @classmethod
+    def select(cls, selection):
+        if QApplication.keyboardModifiers() == Qt.ControlModifier:
+            selection += cmds.ls(sl=True)
+        elif QApplication.keyboardModifiers() == Qt.ShiftModifier:
+            selection = core.subtract_list(cmds.ls(sl=True), selection)
+        core.select(selection)
 
-            self.refresh_attr_tree()
+    def set_value(self):
+        with core.Chunk():
+            grp_attrs = self.get_selected_attrs()
+            common_value = grp_attrs.get_value()
+            raw_value = QInputDialog.getText(self, "Set value", "Value:", text=str(common_value if common_value is not None else 'current'))[0]
+            if raw_value != '':
+                for index, attr in enumerate(grp_attrs):
+                    if not attr.is_locked() and not attr.is_source_connected():
+                        current = attr.get_value()
+                        value = eval(raw_value)
+                        attr.set_value(value)
+                    else:
+                        cmds.warning('{0}: \'{1}\' cannot be set (locked or source connected).'.format(self.__class__.__name__, attr.get_name()))
+
+        self.refresh_attr_tree()
 
     def show_context_menu(self, point):
         context_menu = QMenu(self)
@@ -115,31 +129,6 @@ class AttributeEditorPlus(QDialog):
     def get_selected_attrs(self):
         for widget in self.attrs_tree.selectedItems():
             return widget.data(0, Qt.UserRole)
-
-    def refresh_menu_bar(self):
-        self.menu_bar.clear()
-
-        selection_menu = self.menu_bar.addMenu('Selection')
-        recently_selected_menu = selection_menu.addMenu('Recently Selected')
-        saved_selections = selection_menu.addMenu('Saved Selections')
-        selection_menu.addAction(create_action('Save Selection', self.save_selection, self))
-
-        for selection in self.selection_file.get_recent():
-            action = create_action(list_to_label(selection, limit=50), lambda x=selection: self.select(x), self)
-            recently_selected_menu.addAction(action)
-
-        for name, selection in self.selection_file.get_saved():
-            label = '{0}: {1}'.format(name, list_to_label(selection, limit=50))
-            action = create_action(label, lambda x=selection: self.select(x), self)
-            saved_selections.addAction(action)
-
-    @classmethod
-    def select(cls, selection):
-        if QApplication.keyboardModifiers() == Qt.ControlModifier:
-            selection += cmds.ls(sl=True)
-        elif QApplication.keyboardModifiers() == Qt.ShiftModifier:
-            selection = core.subtract_list(cmds.ls(sl=True), selection)
-        core.select(selection)
 
     def refresh(self):
         selected_nodes = self.get_selected_nodes()
@@ -164,6 +153,59 @@ class AttributeEditorPlus(QDialog):
 
         self.refresh_attr_tree()
         self.refresh_menu_bar()
+
+    def refresh_menu_bar(self):
+        self.menu_bar.clear()
+
+        selection_menu = self.menu_bar.addMenu('Selection')
+        recently_selected_menu = selection_menu.addMenu('Recently Selected')
+        saved_selections = selection_menu.addMenu('Saved Selections')
+        selection_menu.addAction(create_action('Save Selection', self.save_selection, self))
+
+        for selection in self.selection_file.get_recent():
+            action = create_action(list_to_label(selection, limit=50), lambda x=selection: self.select(x), self)
+            recently_selected_menu.addAction(action)
+
+        for name, selection in self.selection_file.get_saved():
+            label = '{0}: {1}'.format(name, list_to_label(selection, limit=50))
+            action = create_action(label, lambda x=selection: self.select(x), self)
+            saved_selections.addAction(action)
+
+    def refresh_attr_tree(self):
+        self.attrs_tree.clear()
+
+        attrs_dict = dict()
+        nodes = self.get_selected_nodes()
+        for node in nodes:
+            attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
+            for attr in attrs:
+                full = core.f_attr(node, attr)
+                if core.Attribute.is_one(full):
+                    if attr not in attrs_dict:
+                        attrs_dict[attr] = core.GroupOfAttributes()
+                    attrs_dict[attr].append(core.Attribute(full))
+
+        for attr, attr_grp in attrs_dict.items():
+            locked = attr_grp.are_locked()
+            source_connected = attr_grp.are_source_connected()
+            value = attr_grp.get_value()
+            type_ = attr_grp.get_type()
+            widget = QTreeWidgetItem((attr, '', '', format_value(value) if value is not None else '...'))
+            msg = '{0} - type: {1}, value: {2}'.format(attr, str(type_) if type_ is not None else '...', value)
+            widget.setToolTip(0, msg)
+            widget.setStatusTip(0, msg)
+            widget.setData(0, Qt.UserRole, attr_grp)
+            if locked == 1:
+                widget.setText(1, '...')
+            if locked > 0:
+                widget.setIcon(1, QIcon(':/lock.png'))
+
+            if source_connected == 1:
+                widget.setText(2, '...')
+            if source_connected > 0:
+                widget.setIcon(2, QIcon(':/lock.png'))
+
+            self.attrs_tree.addTopLevelItem(widget)
 
     def set_script_job_enabled(self, enabled):
         if enabled and self.script_job_number < 0:
@@ -193,40 +235,3 @@ class AttributeEditorPlus(QDialog):
     def save_selection(self):
         self.selection_file.add_saved([core.randomString(stringLength=8), cmds.ls(sl=True)])
         self.refresh_menu_bar()
-
-    def refresh_attr_tree(self):
-        self.attrs_tree.clear()
-
-        attrs_dict = dict()
-        nodes = self.get_selected_nodes()
-        for node in nodes:
-            attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
-            for attr in attrs:
-                full = core.f_attr(node, attr)
-                if core.Attribute.is_one(full):
-                    if attr not in attrs_dict:
-                        attrs_dict[attr] = core.GroupOfAttributes()
-                    attrs_dict[attr].append(core.Attribute(full))
-
-        for attr, attr_grp in attrs_dict.items():
-            locked = attr_grp.are_locked()
-            source_connected = attr_grp.are_source_connected()
-            value = attr_grp.get_value()
-            type_ = attr_grp.get_type()
-
-            widget = QTreeWidgetItem((attr, '', '', str(value) if value is not None else '...'))
-            msg = '{0} - type: {1}, value: {2}'.format(attr, str(type_) if type_ is not None else '...', value)
-            widget.setToolTip(0, msg)
-            widget.setStatusTip(0, msg)
-            widget.setData(0, Qt.UserRole, attr_grp)
-            if locked == 1:
-                widget.setText(1, '...')
-            if locked > 0:
-                widget.setIcon(1, QIcon(':/lock.png'))
-
-            if source_connected == 1:
-                widget.setText(2, '...')
-            if source_connected > 0:
-                widget.setIcon(2, QIcon(':/lock.png'))
-
-            self.attrs_tree.addTopLevelItem(widget)
