@@ -109,6 +109,8 @@ class AttributeEditorPlus(QDialog):
         with core.Chunk():
             grp_attrs = self.get_selected_attrs()
             common_value = grp_attrs.get_value()
+            if isinstance(common_value, str) or isinstance(common_value, unicode):
+                common_value = '\'{0}\''.format(common_value)
             raw_value = QInputDialog.getText(self, "Set value", "Value:", text=str(common_value if common_value is not None else 'current'))[0]
             if raw_value != '':
                 for index, attr in enumerate(grp_attrs):
