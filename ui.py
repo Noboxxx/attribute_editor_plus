@@ -70,7 +70,17 @@ class AttributeEditorPlus(QDialog):
         self.attrs_tree.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.attrs_tree.setMouseTracking(True)
 
-        self.node_info_lay = QHBoxLayout()
+        self.select_by_name_line_edit = QLineEdit()
+        select_by_name_btn = QPushButton('>')
+        select_by_name_btn.clicked.connect(self.select_by_name)
+
+        select_by_name_lay = QHBoxLayout()
+        select_by_name_lay.addWidget(QLabel('Select by Name'))
+        select_by_name_lay.addWidget(self.select_by_name_line_edit)
+        select_by_name_lay.addWidget(select_by_name_btn)
+
+        self.node_info_lay = QVBoxLayout()
+        self.node_info_lay.addLayout(select_by_name_lay)
         self.node_info_lay.addWidget(self.nodes_tree)
 
         self.attrs_lay = QVBoxLayout()
@@ -82,6 +92,12 @@ class AttributeEditorPlus(QDialog):
         main_lay.setMenuBar(self.menu_bar)
         main_lay.addLayout(self.node_info_lay)
         main_lay.addLayout(self.attrs_lay)
+
+    def select_by_name(self):
+        ls = cmds.ls(self.select_by_name_line_edit.text()) or list()
+        if not ls:
+            return
+        cmds.select(ls)
 
     @classmethod
     def display(cls):
