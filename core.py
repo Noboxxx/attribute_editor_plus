@@ -1,4 +1,4 @@
-from maya import cmds
+from maya import cmds, mel
 import json
 import os
 import random
@@ -166,6 +166,9 @@ class GroupOfAttributes(object):
     def are_source_connected(self):
         return search_in(True, [item.is_source_connected() for item in self.get_attributes()])
 
+    def are_destination_connected(self):
+        return search_in(True, [item.is_destination_connected() for item in self.get_attributes()])
+
     def get_type(self):
         types = [item.get_type() for item in self.get_attributes()]
         if is_list_full_of_same(types):
@@ -239,7 +242,7 @@ class Attribute(object):
 
     def set_value(self, value):
         if self.get_type() == 'string':
-            cmds.setAttr(self.get_name(), value, clamp=True, type='string')
+            cmds.setAttr(self.get_name(), value, type='string')
         else:
             cmds.setAttr(self.get_name(), value, clamp=True)
 
@@ -248,6 +251,29 @@ class Attribute(object):
 
     def get_attr(self):
         return '.'.join(self.get_name().split('.')[1:])
+
+    def get_long_name(self):
+        return cmds.attributeName(self.get_name(), long=True)
+
+    def get_default_value(self):
+        if self.get_type() == 'string':
+            return ''
+        elif self.get_long_name().startswith('scale'):
+            return 1
+        elif self.get_long_name().startswith('translate'):
+            return 0
+        elif self.get_long_name().startswith('rotate'):
+            return 0
+        elif self.get_long_name() == 'visibility':
+            return True
+        return cmds.addAttr(self.get_name(), q=True, defaultValue=True)
+
+    def lock(self, value):
+        cmds.setAttr(self.get_name(), lock=value)
+
+    def break_connection(self):
+        mel.eval('source generateChannelMenu.mel;')
+        mel.eval('CBdeleteConnection "{0}";'.format(self.get_name()))
 
 
 class Chunk(object):

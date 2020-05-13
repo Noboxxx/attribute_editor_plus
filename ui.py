@@ -6,6 +6,7 @@ import maya.OpenMayaUI as omui
 from maya import cmds
 from functools import partial
 import core
+import collections
 
 
 def get_widget(object_name, type_):
@@ -60,14 +61,12 @@ class AttributeEditorPlus(QDialog):
             self.setWindowFlags(Qt.Tool)
 
         self.nodes_tree = QTreeWidget()
-        self.nodes_tree.setColumnCount(2)
         self.nodes_tree.setHeaderLabels(('name', 'type'))
         self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
         self.nodes_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
         self.attrs_tree = QTreeWidget()
-        self.attrs_tree.setColumnCount(3)
-        self.attrs_tree.setHeaderLabels(('name', 'locked', 'connected', 'value'))
+        self.attrs_tree.setHeaderLabels(('name', 'value'))
         self.attrs_tree.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.attrs_tree.setMouseTracking(True)
 
@@ -116,6 +115,7 @@ class AttributeEditorPlus(QDialog):
                 for index, attr in enumerate(grp_attrs):
                     if not attr.is_locked() and not attr.is_source_connected():
                         current = attr.get_value()
+                        default = attr.get_default_value()
                         value = eval(raw_value)
                         attr.set_value(value)
                     else:
@@ -123,9 +123,30 @@ class AttributeEditorPlus(QDialog):
 
         self.refresh_attr_tree()
 
+    def lock(self):
+        with core.Chunk():
+            for attr in self.get_selected_attrs():
+                attr.lock(True)
+        self.refresh_attr_tree()
+
+    def unlock(self):
+        with core.Chunk():
+            for attr in self.get_selected_attrs():
+                attr.lock(False)
+        self.refresh_attr_tree()
+
+    def break_connection(self):
+        with core.Chunk():
+            for attr in self.get_selected_attrs():
+                attr.break_connection()
+        self.refresh_attr_tree()
+
     def show_context_menu(self, point):
         context_menu = QMenu(self)
         context_menu.addAction(create_action('Set Value', self.set_value, self))
+        context_menu.addAction(create_action('Lock', self.lock, self))
+        context_menu.addAction(create_action('Unlock', self.unlock, self))
+        context_menu.addAction(create_action('Break Connection', self.break_connection, self))
         context_menu.exec_(self.mapToGlobal(point))
 
     def get_selected_attrs(self):
@@ -133,7 +154,6 @@ class AttributeEditorPlus(QDialog):
             return widget.data(0, Qt.UserRole)
 
     def refresh(self):
-        selected_nodes = self.get_selected_nodes()
         self.nodes_tree.clear()
         selection = cmds.ls(sl=True, objectsOnly=True) or list()
 
@@ -147,9 +167,7 @@ class AttributeEditorPlus(QDialog):
         iterator = QTreeWidgetItemIterator(self.nodes_tree)
         while iterator.value():
             widget = iterator.value()
-            text = widget.text(0)
-            if text in selected_nodes:
-                widget.setSelected(True)
+            widget.setSelected(True)
 
             iterator += 1
 
@@ -176,7 +194,7 @@ class AttributeEditorPlus(QDialog):
     def refresh_attr_tree(self):
         self.attrs_tree.clear()
 
-        attrs_dict = dict()
+        attrs_dict = collections.Counter()
         nodes = self.get_selected_nodes()
         for node in nodes:
             attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
@@ -188,24 +206,32 @@ class AttributeEditorPlus(QDialog):
                     attrs_dict[attr].append(core.Attribute(full))
 
         for attr, attr_grp in attrs_dict.items():
+            if len(attr_grp.get_attributes()) != len(nodes):
+                continue
             locked = attr_grp.are_locked()
             source_connected = attr_grp.are_source_connected()
             value = attr_grp.get_value()
             type_ = attr_grp.get_type()
-            widget = QTreeWidgetItem((attr, '', '', format_value(value) if value is not None else '...'))
+            widget = QTreeWidgetItem((attr, format_value(value) if value is not None else '...'))
             msg = '{0} - type: {1}, value: {2}'.format(attr, str(type_) if type_ is not None else '...', value)
             widget.setToolTip(0, msg)
             widget.setStatusTip(0, msg)
             widget.setData(0, Qt.UserRole, attr_grp)
-            if locked == 1:
-                widget.setText(1, '...')
-            if locked > 0:
-                widget.setIcon(1, QIcon(':/lock.png'))
-
-            if source_connected == 1:
-                widget.setText(2, '...')
             if source_connected > 0:
-                widget.setIcon(2, QIcon(':/lock.png'))
+                widget.setText(0, '-> {0}'.format(widget.text(0)))
+
+            if attr_grp.are_destination_connected() > 0:
+                widget.setText(0, '{0} ->'.format(widget.text(0)))
+
+            for index in range(self.attrs_tree.columnCount()):
+                if locked > 0:
+                    color = QColor('gray')
+                elif source_connected > 0:
+                    color = QColor(255, 255, 150)
+                else:
+                    color = QColor('lightGray')
+
+                widget.setTextColor(index, color)
 
             self.attrs_tree.addTopLevelItem(widget)
 
