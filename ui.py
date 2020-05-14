@@ -64,6 +64,7 @@ class AttributeEditorPlus(QDialog):
         self.nodes_tree.setHeaderLabels(('name', 'type'))
         self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
         self.nodes_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.nodes_tree.setMaximumHeight(250)
 
         self.attrs_tree = QTreeWidget()
         self.attrs_tree.setHeaderLabels(('name', 'value'))
