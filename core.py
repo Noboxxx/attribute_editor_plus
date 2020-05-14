@@ -255,6 +255,9 @@ class Attribute(object):
     def get_long_name(self):
         return cmds.attributeName(self.get_name(), long=True)
 
+    def get_nice_name(self):
+        return cmds.attributeName(self.get_name())
+
     def get_default_value(self):
         if self.get_type() == 'string':
             return ''

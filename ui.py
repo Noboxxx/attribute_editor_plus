@@ -92,6 +92,7 @@ class AttributeEditorPlus(QDialog):
         main_lay.setMenuBar(self.menu_bar)
         main_lay.addLayout(self.node_info_lay)
         main_lay.addLayout(self.attrs_lay)
+        main_lay.addLayout(self.attrs_lay)
 
     def select_by_name(self):
         ls = cmds.ls(self.select_by_name_line_edit.text()) or list()
@@ -210,7 +211,7 @@ class AttributeEditorPlus(QDialog):
     def refresh_attr_tree(self):
         self.attrs_tree.clear()
 
-        attrs_dict = collections.Counter()
+        attrs_dict = collections.OrderedDict()
         nodes = self.get_selected_nodes()
         for node in nodes:
             attrs = (cmds.listAttr(node, cb=True) or list()) + (cmds.listAttr(node, k=True) or list())
@@ -228,7 +229,7 @@ class AttributeEditorPlus(QDialog):
             source_connected = attr_grp.are_source_connected()
             value = attr_grp.get_value()
             type_ = attr_grp.get_type()
-            widget = QTreeWidgetItem((attr, format_value(value) if value is not None else '...'))
+            widget = QTreeWidgetItem((attr_grp.get_attributes()[0].get_nice_name(), format_value(value) if value is not None else '...'))
             msg = '{0} - type: {1}, value: {2}'.format(attr, str(type_) if type_ is not None else '...', value)
             widget.setToolTip(0, msg)
             widget.setStatusTip(0, msg)
