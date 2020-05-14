@@ -171,9 +171,13 @@ class AttributeEditorPlus(QDialog):
         for widget in self.attrs_tree.selectedItems():
             return widget.data(0, Qt.UserRole)
 
+    @classmethod
+    def get_selected(cls):
+        return cmds.ls(sl=True, objectsOnly=True) or list()
+
     def refresh(self):
         self.nodes_tree.clear()
-        selection = cmds.ls(sl=True, objectsOnly=True) or list()
+        selection = self.get_selected()
 
         for index, node in enumerate(selection):
             type_ = cmds.objectType(node)
@@ -261,7 +265,7 @@ class AttributeEditorPlus(QDialog):
             self.script_job_number = -1
 
     def selection_changed(self):
-        self.selection_file.add_recent(cmds.ls(sl=True))
+        self.selection_file.add_recent(self.get_selected())
         self.refresh()
 
     def deleteLater(self, *args, **kwargs):
@@ -279,5 +283,21 @@ class AttributeEditorPlus(QDialog):
         return selected_nodes
 
     def save_selection(self):
-        self.selection_file.add_saved([core.randomString(stringLength=8), cmds.ls(sl=True)])
+        self.selection_file.add_saved([core.randomString(stringLength=8), self.get_selected()])
         self.refresh_menu_bar()
+
+    def get_listed_nodes(self):
+        nodes = list()
+        iterator = QTreeWidgetItemIterator(self.nodes_tree)
+        while iterator.value():
+            widget = iterator.value()
+            nodes.append(widget.text(0))
+
+            iterator += 1
+        return nodes
+
+    def enterEvent(self, *args, **kwargs):
+        super(AttributeEditorPlus, self).enterEvent(*args, **kwargs)
+        if cmds.ls(sl=True) != self.get_listed_nodes():
+            print 'Refresh'
+            self.refresh()
