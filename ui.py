@@ -116,11 +116,31 @@ class AttributeEditorPlus(QDialog):
 
     @classmethod
     def select(cls, selection):
-        if QApplication.keyboardModifiers() == Qt.ControlModifier:
+        if QApplication.keyboardModifiers() == Qt.ShiftModifier:
             selection += cmds.ls(sl=True)
-        elif QApplication.keyboardModifiers() == Qt.ShiftModifier:
+        elif QApplication.keyboardModifiers() == Qt.ControlModifier:
             selection = core.subtract_list(cmds.ls(sl=True), selection)
         core.select(selection)
+
+    @classmethod
+    def select_children(cls):
+        all_children = list()
+
+        for node in cls.get_selected():
+            children = cmds.listRelatives(node, children=True) or list()
+            all_children += children
+
+        cls.select(all_children)
+
+    @classmethod
+    def select_all_descendents(cls):
+        all_descendents = list()
+
+        for node in cls.get_selected():
+            descendents = cmds.listRelatives(node, allDescendents=True) or list()
+            all_descendents += descendents
+
+        cls.select(all_descendents)
 
     def set_value(self):
         with core.Chunk():
@@ -172,8 +192,12 @@ class AttributeEditorPlus(QDialog):
             return widget.data(0, Qt.UserRole)
 
     @classmethod
-    def get_selected(cls):
-        return cmds.ls(sl=True, objectsOnly=True) or list()
+    def get_selected(cls, limit=30):
+        selection = cmds.ls(sl=True, objectsOnly=True) or list()
+        if len(selection) > limit:
+            cmds.warning('{0} : Selection too broad. Limit set to {1}'.format(cls.__name__, limit))
+            return selection[:limit]
+        return selection
 
     def refresh(self):
         self.nodes_tree.clear()
@@ -203,6 +227,8 @@ class AttributeEditorPlus(QDialog):
         recently_selected_menu = selection_menu.addMenu('Recently Selected')
         saved_selections = selection_menu.addMenu('Saved Selections')
         selection_menu.addAction(create_action('Save Selection', self.save_selection, self))
+        selection_menu.addAction(create_action('Select Children', self.select_children, self))
+        selection_menu.addAction(create_action('Select All Descendents', self.select_all_descendents, self))
 
         for selection in self.selection_file.get_recent():
             action = create_action(list_to_label(selection, limit=50), lambda x=selection: self.select(x), self)
@@ -298,6 +324,6 @@ class AttributeEditorPlus(QDialog):
 
     def enterEvent(self, *args, **kwargs):
         super(AttributeEditorPlus, self).enterEvent(*args, **kwargs)
-        if cmds.ls(sl=True) != self.get_listed_nodes():
+        if self.get_selected() != self.get_listed_nodes():
             print 'Refresh'
             self.refresh()
