@@ -99,7 +99,7 @@ class AttributeEditorPlus(QDialog):
         ls = cmds.ls(self.select_by_name_line_edit.text()) or list()
         if not ls:
             return
-        cmds.select(ls)
+        self.select(ls)
 
     @classmethod
     def display(cls):
