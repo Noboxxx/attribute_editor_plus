@@ -41,12 +41,14 @@ def format_value(value):
         return '\'{0}\''.format(value)
     return '{0}'.format(value)
 
+
 def string_to_list(s):
     ls = list()
     for item in s.replace(',', ' ').split(' '):
         if item != '':
             ls.append(item)
     return ls
+
 
 class AttributeEditorPlus(QDialog):
     script_job_number = -1
@@ -83,20 +85,16 @@ class AttributeEditorPlus(QDialog):
         info_lay.addWidget(self.node_count)
 
         self.select_by_name_line_edit = QLineEdit()
-        select_by_name_btn = QPushButton('>')
-        select_by_name_btn.clicked.connect(self.select_by_name)
+        self.select_by_name_line_edit.returnPressed.connect(self.select_by_name)
         select_by_name_lay = QHBoxLayout()
         select_by_name_lay.addWidget(QLabel('Select by Name'))
         select_by_name_lay.addWidget(self.select_by_name_line_edit)
-        select_by_name_lay.addWidget(select_by_name_btn)
 
         self.select_by_type_line_edit = QLineEdit()
-        select_by_type_btn = QPushButton('>')
-        select_by_type_btn.clicked.connect(self.select_by_type)
+        self.select_by_type_line_edit.returnPressed.connect(self.select_by_type)
         select_by_type_lay = QHBoxLayout()
         select_by_type_lay.addWidget(QLabel('Select by Type'))
         select_by_type_lay.addWidget(self.select_by_type_line_edit)
-        select_by_type_lay.addWidget(select_by_type_btn)
 
         self.node_info_lay = QVBoxLayout()
         self.node_info_lay.addLayout(info_lay)
@@ -126,7 +124,10 @@ class AttributeEditorPlus(QDialog):
     def select_by_type(self):
         ls = list()
         for item in string_to_list(self.select_by_type_line_edit.text()):
-            ls += cmds.ls(type=item) or list()
+            if item == 'controller':
+                ls += cmds.controller(q=True, allControllers=True) or list()
+            else:
+                ls += cmds.ls(type=item) or list()
         if not ls:
             return
         self.select(ls)
