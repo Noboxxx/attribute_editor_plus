@@ -7,7 +7,7 @@ from maya import cmds
 from functools import partial
 import core
 import collections
-
+import time
 
 def get_widget(object_name, type_):
     pointer = omui.MQtUtil.findControl(object_name)
@@ -74,14 +74,22 @@ class AttributeEditorPlus(QDialog):
         self.select_by_name_line_edit = QLineEdit()
         select_by_name_btn = QPushButton('>')
         select_by_name_btn.clicked.connect(self.select_by_name)
-
         select_by_name_lay = QHBoxLayout()
         select_by_name_lay.addWidget(QLabel('Select by Name'))
         select_by_name_lay.addWidget(self.select_by_name_line_edit)
         select_by_name_lay.addWidget(select_by_name_btn)
 
+        self.select_by_type_line_edit = QLineEdit()
+        select_by_type_btn = QPushButton('>')
+        select_by_type_btn.clicked.connect(self.select_by_type)
+        select_by_type_lay = QHBoxLayout()
+        select_by_type_lay.addWidget(QLabel('Select by Type'))
+        select_by_type_lay.addWidget(self.select_by_type_line_edit)
+        select_by_type_lay.addWidget(select_by_type_btn)
+
         self.node_info_lay = QVBoxLayout()
         self.node_info_lay.addLayout(select_by_name_lay)
+        self.node_info_lay.addLayout(select_by_type_lay)
         self.node_info_lay.addWidget(self.nodes_tree)
 
         self.attrs_lay = QVBoxLayout()
@@ -97,6 +105,12 @@ class AttributeEditorPlus(QDialog):
 
     def select_by_name(self):
         ls = cmds.ls(self.select_by_name_line_edit.text()) or list()
+        if not ls:
+            return
+        self.select(ls)
+
+    def select_by_type(self):
+        ls = cmds.ls(type=self.select_by_type_line_edit.text()) or list()
         if not ls:
             return
         self.select(ls)
@@ -117,9 +131,9 @@ class AttributeEditorPlus(QDialog):
     @classmethod
     def select(cls, selection):
         if QApplication.keyboardModifiers() == Qt.ShiftModifier:
-            selection += cmds.ls(sl=True)
+            selection = cls.get_selected() + selection
         elif QApplication.keyboardModifiers() == Qt.ControlModifier:
-            selection = core.subtract_list(cmds.ls(sl=True), selection)
+            selection = core.subtract_list(cls.get_selected(), selection)
         core.select(selection)
 
     @classmethod
@@ -192,14 +206,11 @@ class AttributeEditorPlus(QDialog):
             return widget.data(0, Qt.UserRole)
 
     @classmethod
-    def get_selected(cls, limit=30):
-        selection = cmds.ls(sl=True, objectsOnly=True) or list()
-        if len(selection) > limit:
-            cmds.warning('{0} : Selection too broad. Limit set to {1}'.format(cls.__name__, limit))
-            return selection[:limit]
-        return selection
+    def get_selected(cls):
+        return cmds.ls(sl=True, objectsOnly=True) or list()
 
     def refresh(self):
+        start = time.time()
         self.nodes_tree.clear()
         selection = self.get_selected()
 
@@ -219,8 +230,10 @@ class AttributeEditorPlus(QDialog):
 
         self.refresh_attr_tree()
         self.refresh_menu_bar()
+        cmds.warning('Took {0} sec to refresh.'.format(time.time() - start))
 
     def refresh_menu_bar(self):
+        start = time.time()
         self.menu_bar.clear()
 
         selection_menu = self.menu_bar.addMenu('Selection')
@@ -238,8 +251,10 @@ class AttributeEditorPlus(QDialog):
             label = '{0}: {1}'.format(name, list_to_label(selection, limit=50))
             action = create_action(label, lambda x=selection: self.select(x), self)
             saved_selections.addAction(action)
+        cmds.warning('Took {0} sec to refresh menu bar.'.format(time.time() - start))
 
     def refresh_attr_tree(self):
+        start = time.time()
         self.attrs_tree.clear()
 
         attrs_dict = collections.OrderedDict()
@@ -282,6 +297,7 @@ class AttributeEditorPlus(QDialog):
                 widget.setTextColor(index, color)
 
             self.attrs_tree.addTopLevelItem(widget)
+        cmds.warning('Took {0} sec to refresh attrs.'.format(time.time() - start))
 
     def set_script_job_enabled(self, enabled):
         if enabled and self.script_job_number < 0:
