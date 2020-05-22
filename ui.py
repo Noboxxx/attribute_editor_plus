@@ -9,6 +9,7 @@ import core
 import collections
 import time
 
+
 def get_widget(object_name, type_):
     pointer = omui.MQtUtil.findControl(object_name)
     return wrapInstance(long(pointer), type_)
@@ -39,7 +40,6 @@ def format_value(value):
     if isinstance(value, str) or isinstance(value, unicode):
         return '\'{0}\''.format(value)
     return '{0}'.format(value)
-
 
 class AttributeEditorPlus(QDialog):
     script_job_number = -1
@@ -216,6 +216,8 @@ class AttributeEditorPlus(QDialog):
 
     def refresh(self):
         start = time.time()
+        self.nodes_tree.itemSelectionChanged.disconnect()
+
         self.nodes_tree.clear()
         selection = self.get_selected()
         self.node_count.setText('Selected: {0}'.format(len(selection)))
@@ -226,18 +228,16 @@ class AttributeEditorPlus(QDialog):
             widget.setIcon(1, icon)
             self.nodes_tree.addTopLevelItem(widget)
 
-        self.nodes_tree.itemSelectionChanged.disconnect()
         iterator = QTreeWidgetItemIterator(self.nodes_tree)
         while iterator.value():
             widget = iterator.value()
             widget.setSelected(True)
 
             iterator += 1
-        self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
 
+        self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
         self.refresh_attr_tree()
         self.refresh_menu_bar()
-        cmds.warning('Took {0} sec to refresh.'.format(time.time() - start))
 
     def refresh_menu_bar(self):
         start = time.time()
@@ -258,7 +258,6 @@ class AttributeEditorPlus(QDialog):
             label = '{0}: {1}'.format(name, list_to_label(selection, limit=50))
             action = create_action(label, lambda x=selection: self.select(x), self)
             saved_selections.addAction(action)
-        cmds.warning('Took {0} sec to refresh menu bar.'.format(time.time() - start))
 
     def refresh_attr_tree(self):
         start = time.time()
@@ -304,6 +303,7 @@ class AttributeEditorPlus(QDialog):
                 widget.setTextColor(index, color)
 
             self.attrs_tree.addTopLevelItem(widget)
+        print self.get_selected(), self.get_selected_nodes()
         cmds.warning('Took {0} sec to refresh attrs.'.format(time.time() - start))
 
     def set_script_job_enabled(self, enabled):
