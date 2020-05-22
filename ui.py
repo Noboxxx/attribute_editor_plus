@@ -41,6 +41,13 @@ def format_value(value):
         return '\'{0}\''.format(value)
     return '{0}'.format(value)
 
+def string_to_list(s):
+    ls = list()
+    for item in s.replace(',', ' ').split(' '):
+        if item != '':
+            ls.append(item)
+    return ls
+
 class AttributeEditorPlus(QDialog):
     script_job_number = -1
     selection_file = core.SelectionFile.from_maya_folder()
@@ -109,13 +116,17 @@ class AttributeEditorPlus(QDialog):
         main_lay.addLayout(self.attrs_lay)
 
     def select_by_name(self):
-        ls = cmds.ls(self.select_by_name_line_edit.text()) or list()
+        ls = list()
+        for item in string_to_list(self.select_by_name_line_edit.text()):
+            ls += cmds.ls(item) or list()
         if not ls:
             return
         self.select(ls)
 
     def select_by_type(self):
-        ls = cmds.ls(type=self.select_by_type_line_edit.text()) or list()
+        ls = list()
+        for item in string_to_list(self.select_by_type_line_edit.text()):
+            ls += cmds.ls(type=item) or list()
         if not ls:
             return
         self.select(ls)
