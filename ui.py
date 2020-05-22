@@ -71,6 +71,10 @@ class AttributeEditorPlus(QDialog):
         self.attrs_tree.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.attrs_tree.setMouseTracking(True)
 
+        self.node_count = QLabel()
+        info_lay = QHBoxLayout()
+        info_lay.addWidget(self.node_count)
+
         self.select_by_name_line_edit = QLineEdit()
         select_by_name_btn = QPushButton('>')
         select_by_name_btn.clicked.connect(self.select_by_name)
@@ -88,6 +92,7 @@ class AttributeEditorPlus(QDialog):
         select_by_type_lay.addWidget(select_by_type_btn)
 
         self.node_info_lay = QVBoxLayout()
+        self.node_info_lay.addLayout(info_lay)
         self.node_info_lay.addLayout(select_by_name_lay)
         self.node_info_lay.addLayout(select_by_type_lay)
         self.node_info_lay.addWidget(self.nodes_tree)
@@ -213,7 +218,7 @@ class AttributeEditorPlus(QDialog):
         start = time.time()
         self.nodes_tree.clear()
         selection = self.get_selected()
-
+        self.node_count.setText('Selected: {0}'.format(len(selection)))
         for index, node in enumerate(selection):
             type_ = cmds.objectType(node)
             widget = QTreeWidgetItem((node, type_))
@@ -221,12 +226,14 @@ class AttributeEditorPlus(QDialog):
             widget.setIcon(1, icon)
             self.nodes_tree.addTopLevelItem(widget)
 
+        self.nodes_tree.itemSelectionChanged.disconnect()
         iterator = QTreeWidgetItemIterator(self.nodes_tree)
         while iterator.value():
             widget = iterator.value()
             widget.setSelected(True)
 
             iterator += 1
+        self.nodes_tree.itemSelectionChanged.connect(self.refresh_attr_tree)
 
         self.refresh_attr_tree()
         self.refresh_menu_bar()
@@ -338,8 +345,8 @@ class AttributeEditorPlus(QDialog):
             iterator += 1
         return nodes
 
-    def enterEvent(self, *args, **kwargs):
-        super(AttributeEditorPlus, self).enterEvent(*args, **kwargs)
-        if self.get_selected() != self.get_listed_nodes():
-            print 'Refresh'
-            self.refresh()
+    # def enterEvent(self, *args, **kwargs):
+    #     super(AttributeEditorPlus, self).enterEvent(*args, **kwargs)
+    #     if self.get_selected() != self.get_listed_nodes():
+    #         print 'Refresh'
+    #         self.refresh()
